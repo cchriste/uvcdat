@@ -185,6 +185,13 @@ parameters from other instances")
         except Exception:
             pass
             
+        from packages.ViSUS.info import package_requirements as visus_requirements
+        try:
+            visus_requirements()
+            pkgs.append('ViSUS')
+        except Exception:
+            pass
+            
         self.vistrailsStartup.set_needed_packages(pkgs)
         self.vistrailsStartup.init()
         

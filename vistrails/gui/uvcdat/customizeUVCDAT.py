@@ -94,3 +94,6 @@ plotTypes = uvcdatCommons.plotTypes
 defaultAspectRatio = "Auto (lat/lon)"
 #this is a dictionary {plotname: plot object}
 extraPlotTypes = {}
+
+VisusEnabled=True
+    

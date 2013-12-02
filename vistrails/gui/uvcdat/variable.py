@@ -59,7 +59,6 @@ class VariableProperties(QtGui.QDialog):
         self.resize(QtCore.QSize(P.width()*.8,P.height()*.9))
         self.setSizePolicy(QtGui.QSizePolicy.Expanding,QtGui.QSizePolicy.Expanding)
         self.originTabWidget=QtGui.QTabWidget(self)
-        #self.connect(self.originTabWidget,QtCore.SIGNAL("currentChanged(int)"),self.tabHasChanged)
         sp = QtGui.QSplitter(QtCore.Qt.Vertical)
         #sc=QtGui.QScrollArea()
         #sc.setWidget(self.originTabWidget)
@@ -112,6 +111,8 @@ class VariableProperties(QtGui.QDialog):
         self.createOpenDAPTab()
         self.createEditTab()
         self.createInfoTab()
+        if customizeUVCDAT.VisusEnabled:
+          self.createVisusTab()
         for i in range(self.originTabWidget.count()):
             if self.originTabWidget.tabText(i) == "Edit":
                 self.originTabWidget.setTabEnabled(i,False)
@@ -148,6 +149,12 @@ class VariableProperties(QtGui.QDialog):
             if (index==2): self.clearDimensionsWidget()
         elif (index==3):
             self.root.varProp.selectRoiButton.setEnabled(True)
+        elif self.originTabWidget.tabText(self.originTabWidget.currentIndex())=="ViSUS":
+            self.root.varProp.btnDefine.setEnabled(False)
+            self.root.varProp.btnDefineClose.setEnabled(True)
+            self.root.varProp.btnDefineAs.setEnabled(False)            
+            if not self.visusDatasetsFetched:
+                self.visusServerChanged()
         ## else:
         ##     self.root.varProp.btnDefine.setEnabled(True)
         ##     self.root.varProp.btnDefineClose.setEnabled(True)
@@ -312,6 +319,66 @@ class VariableProperties(QtGui.QDialog):
         self.varEditArea=QtGui.QScrollArea()
         self.varEditArea.setWidgetResizable(True)
         self.originTabWidget.addTab(self.varEditArea,"Edit")
+
+    def createVisusTab(self):
+        self.visusDatasetsFetched=False
+        visustab = QtGui.QFrame()
+        v=QtGui.QVBoxLayout()
+        l=QtGui.QLabel("ViSUS Dynamic Volumes")
+        l.setAlignment(Qt.AlignCenter)
+        v.addWidget(l)
+        h=QtGui.QHBoxLayout()
+        l=QtGui.QLabel("Server")
+        h.addWidget(l)
+        self.visus_server_name="http://atlanta.sci.utah.edu"
+        self.visus_server=QtGui.QLineEdit(self.visus_server_name)
+        self.connect(self.visus_server,QtCore.SIGNAL("returnPressed()"),self.visusServerChanged)
+        h.addWidget(self.visus_server)
+        v.addLayout(h)
+        self.visus_datasets=QtGui.QListWidget()
+        self.visus_datasets.setSortingEnabled(True)
+        self.visus_datasets.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.connect(self.visus_datasets,QtCore.SIGNAL("itemDoubleClicked(QListWidgetItem*)"),self.visusDatasetsItemDoubleClicked)
+
+        v.addWidget(self.visus_datasets)
+        visustab.setLayout(v)
+        self.originTabWidget.addTab(visustab,"ViSUS")
+
+    def visusServerChanged(self):
+        if self.visus_server_name!=str(self.visus_server.text()) or not self.visusDatasetsFetched:
+            self.visus_server_name=str(self.visus_server.text())
+            self.populateVisusDatasets()
+
+    def visusDatasetsItemDoubleClicked(self,item):
+        self.defineVarCloseClicked()
+
+    def populateVisusDatasets(self):
+        self.visus_datasets.clear()
+
+        #InitializeVisus
+        from packages.ViSUS import visuscell
+        visuscell.VisusViewer.InitializeVisus()
+
+        #get list of datasets from ViSUS server
+        datasets=visuscell.visuspy.StringTree.open(self.visus_server_name+"/mod_visus?action=list")
+        if str(type(datasets))=="<class 'visuspy.visuspy.StringTree'>":
+            for i in xrange(datasets.getNumberOfChilds()):
+                if datasets.getChild(i).name=="group":
+                    if datasets.getChild(i).read("name")=="uvcdat":
+                        uvcdat=datasets.getChild(i)
+                        break
+        if 'uvcdat' in locals():
+            for i in xrange(uvcdat.getNumberOfChilds()):
+                name=uvcdat.getChild(i).read("name")
+                self.visus_datasets.addItem(name)
+                self.visusDatasetsFetched=True
+        else:
+            QMessageBox.warning(None,"Timeout error","Could not connect to ViSUS server %s."%self.visus_server_name)
+            self.visusDatasetsFetched=False
+
+        #CleanupVisus
+        visuscell.VisusViewer.CleanupVisus()
+
 
     def selectRoi( self ):
         if self.roi: self.roiSelector.setROI( self.roi )
@@ -598,6 +665,38 @@ class VariableProperties(QtGui.QDialog):
         """ Return a new tvariable object with the updated information from
         evaluating the var with the current user selected args / options
         """
+
+        if self.originTabWidget.tabText(self.originTabWidget.currentIndex())=="ViSUS":
+            dataset_name=self.visus_datasets.currentItem().text()
+
+            #multiple selection... but dialog assumes one var.
+            #variables=[]
+            #for item in self.visus_datasets.selectedItems():
+            #    variables += item.text()
+
+            cdmsVar = CDMSVariable(filename=None,
+                                   url=None,
+                                   source=None,
+                                   name=str(dataset_name),
+                                   varNameInFile=None,
+                                   axes=None,
+                                   attributes={'do_not_load':True,
+                                               'visus_idx':str(dataset_name),
+                                               'visus_server':str(self.visus_server_name)},
+                                   axesOperations=None)
+
+            something=QtGui.QWidget()
+            something.id=str(dataset_name)
+            something.type='ViSUS'
+            something.shape='(ViSUS)'
+            self.emit(QtCore.SIGNAL('definedVariableEvent'),(something,cdmsVar))
+
+            _app = get_vistrails_application()
+            controller = _app.uvcdatWindow.get_current_project_controller() 
+            controller.add_defined_variable(cdmsVar)
+
+            return something;
+
         axisList = self.dimsLayout.itemAt(0).widget()
 
         if targetId is not None:

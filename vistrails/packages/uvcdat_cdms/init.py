@@ -264,9 +264,10 @@ class CDMSVariable(Variable):
         self.attributes = self.forceGetInputFromPort("attributes")
         self.axisAttributes = self.forceGetInputFromPort("axisAttributes")
         self.timeBounds = self.forceGetInputFromPort("setTimeBounds")
-        self.get_port_values()
-#        print " ---> CDMSVariable-->compute: ", str(self.file), str(self.url), str(self.name)
-        self.var = self.to_python()
+        if hasattr(self.attributes,'do_not_load') and not self.attributes['do_not_load']:
+            self.get_port_values()
+            #print " ---> CDMSVariable-->compute: ", str(self.file), str(self.url), str(self.name)
+            self.var = self.to_python()
         self.setResult("self", self)
 
     @staticmethod
